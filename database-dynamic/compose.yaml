@@ -1,0 +1,27 @@
+# Use root/example as user/password credentials
+
+services:
+
+  mariadb:
+    image: mariadb:latest
+    container_name: mariadb
+    restart: always
+    ports:
+      - "3306:3306"
+    networks:
+      - database
+    environment:
+      MARIADB_ROOT_PASSWORD: password
+      MYSQL_DATABASE: database
+      MYSQL_USER: normaluser
+      MYSQL_PASSWORD: password
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+
+networks:
+  database:  # Network must be defined here
+    driver: bridge
