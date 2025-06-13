@@ -87,6 +87,45 @@ openssl verify -CAfile ca-cert.pem server-cert.pem client-cert.pem
 ```
 
 ```sh
-CREATE USER 'user1'@'host' IDENTIFIED BY 'password' REQUIRE X509;
-CREATE USER 'user2'@'host' REQUIRE X509;
+# validate root ca
+openssl s_client -connect 0.0.0.0:3306 -CAfile /usr/local/share/ca-certificates/ca-cert.crt
+```
+
+```sh
+# Ensure SSL is added to server
+mariadb -u root -p
+
+SHOW VARIABLES LIKE '%ssl%';
+
+```
+
+```shell
+MariaDB [(none)]> SHOW VARIABLES LIKE '%ssl%';
+
++---------------------+----------------------------------------------+
+| Variable_name       | Value                                        |
++---------------------+----------------------------------------------+
+| have_openssl        | YES                                          |
+| have_ssl            | YES                                          |
+| ssl_ca              | /usr/local/share/ca-certificates/ca-cert.crt |
+| ssl_capath          |                                              |
+| ssl_cert            | /etc/mysql/ssl/server-cert.pem               |
+| ssl_cipher          |                                              |
+| ssl_crl             |                                              |
+| ssl_crlpath         |                                              |
+| ssl_key             | /etc/mysql/ssl/server-key.pem                |
+| version_ssl_library | OpenSSL 3.0.13 30 Jan 2024                   |
++---------------------+----------------------------------------------+
+
+10 rows in set (0.001 sec)
+
+```sh
+#create a user that required certificate to login
+CREATE USER 'clientuser'@'%' REQUIRE X509;
+GRANT ALL PRIVILEGES ON *.* TO 'clientuser'@'%';
+FLUSH PRIVILEGES;
+```
+
+```sh
+mariadb -u clientuser -h 127.0.0.1 --ssl-ca=/etc/mysql/ssl/ca-cert.pem --ssl-cert=/etc/mysql/ssl/client-cert.pem --ssl-key=/etc/mysql/ssl/client-key.pem
 ```
