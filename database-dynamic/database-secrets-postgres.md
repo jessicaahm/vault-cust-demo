@@ -71,7 +71,7 @@ EOF
 ```
 
 ```sh
-vault write database/roles/writeonly \
+vault write database/roles/readonly \
       db_name=postgres \
       creation_statements=@readonly.sql \
       default_ttl=1h \
@@ -80,16 +80,11 @@ vault write database/roles/writeonly \
 ```
 
 ```sh
-vault read database/creds/writeonly
+vault read database/creds/readonly
 ```
 
 ```sh
 docker exec -i \
     learn-postgres \
     psql -U root -c "SELECT usename, valuntil FROM pg_user;"
-
-```
-
-```sh
-vault read database/creds/readonly2
 ```

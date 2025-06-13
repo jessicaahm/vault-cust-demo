@@ -36,7 +36,9 @@ docker pull ubuntu
 ```
 
 ```sh
-docker network ls
+#docker network ls
+
+kubectl 
 ```
 
 ```sh
@@ -49,6 +51,42 @@ docker network create database
 docker-compose up
 
 #docker-compose down
+```
 
+```sh
 # Login via host.docker.internal:3306
+# mysql -h host.docker.internal -P 3306 -u root -p
+
+docker exec -it mariadb mariadb -u root -p
+
+docker exec -it mariadb bash
+
+```
+
+```sh
+# Generate ca cert (can be done in vault)
+openssl genrsa 2048 > ca-key.pem
+openssl req -new -x509 -nodes -days 365000 -key ca-key.pem -out ca-cert.pem
+
+# create db cert req: :MariaDBAdmin
+openssl req -newkey rsa:2048 -days 365000 -nodes -keyout server-key.pem -out server-req.pem
+openssl rsa -in server-key.pem -out server-key.pem
+
+# Sign the cert
+openssl x509 -req -in server-req.pem -days 365000 -CA ca-cert.pem -CAkey ca-key.pem -set_serial 01 -out server-cert.pem
+
+# Create client cert : MariaDBUser
+openssl req -newkey rsa:2048 -days 365000 -nodes -keyout client-key.pem -out client-req.pem
+openssl rsa -in client-key.pem -out client-key.pem
+
+# Sign the cert
+openssl x509 -req -in client-req.pem -days 365000 -CA ca-cert.pem -CAkey ca-key.pem -set_serial 01 -out client-cert.pem
+
+# Verify cert
+openssl verify -CAfile ca-cert.pem server-cert.pem client-cert.pem
+```
+
+```sh
+CREATE USER 'user1'@'host' IDENTIFIED BY 'password' REQUIRE X509;
+CREATE USER 'user2'@'host' REQUIRE X509;
 ```

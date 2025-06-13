@@ -8,8 +8,7 @@ services:
     restart: always
     ports:
       - "3306:3306"
-    networks:
-      - database
+    network_mode: host
     environment:
       MARIADB_ROOT_PASSWORD: password
       MYSQL_DATABASE: database
@@ -22,6 +21,6 @@ services:
     ports:
       - 8080:8080
 
-networks:
-  database:  # Network must be defined here
-    driver: bridge
+# networks:
+#   host:  # Network must be defined here
+#     driver: host
