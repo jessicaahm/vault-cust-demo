@@ -137,6 +137,7 @@ VAULT_NAMESPACE=/admin vault auth list -detailed
 ```
 
 ```sh
+# for /admin namespace to access shared secret
 # Create entity > Store Accessor
 #VAULT_NAMESPACE=/admin vault auth list -format=json | jq -r '.["userpass-tenant1/"].accessor' > accessor_tenant1.txt
 
@@ -154,6 +155,20 @@ VAULT_NAMESPACE=/admin vault write identity/entity-alias name="celine" \
 ```
 
 ```sh
+# for /admin/tenant1 namespace to access shared secret
+vault login root
+# Get accessor
+# VAULT_NAMESPACE=/admin/tenant1 vault auth list -format=json | jq -r '.["approle/"].accessor' > accessor_approle.txt
+
+# Create an internal group [NEED TO DELETE]
+VAULT_NAMESPACE=/admin/tenant1 vault write identity/group name="tenant1-teamname1" \
+     policies="tenant1-readonly" \
+     member_entity_ids=$(cat entity_id_tenant1.txt) \
+     metadata=team="teamname1" \
+
+```
+
+```sh
 VAULT_NAMESPACE=/admin vault read -format=json identity/entity/id/$(cat entity_id_tenant1.txt) | jq -r ".data"
 ```
 
@@ -162,10 +177,29 @@ VAULT_NAMESPACE=/admin vault read -format=json identity/entity/id/$(cat entity_i
 #VAULT_NAMESPACE=/admin vault read identity/entity-alias/id/badf77f7-7b14-f370-7487-865e495f784a
 
 VAULT_NAMESPACE=/admin vault delete identity/entity-alias/id/badf77f7-7b14-f370-7487-865e495f784a
+
+
 ```
 
 ```sh
 VAULT_NAMESPACE=/admin vault login -format=json -method=userpass -path=userpass-tenant1 \
     username=celine | jq -r ".auth.client_token" > celine_token.txt
 
+```
+
+```sh
+vault read sys/config/group-policy-application
+```
+
+```sh
+vault write sys/config/group-policy-application \
+   group_policy_application_mode="any"
+```
+
+Enable Audit Logs
+
+```sh
+#vault status
+vault login root
+VAULT_NAMESPACE=/admin vault audit enable file file_path="/var/logs/vault/audit.log"
 ```
