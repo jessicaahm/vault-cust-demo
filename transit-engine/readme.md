@@ -167,7 +167,7 @@ Import your target key
 vault read -field=public_key transit/wrapping_key
 ```
 
-```python
+```python {"terminalRows":"14"}
 # Generate an AES key
 from Crypto.Hash import CMAC
 from Crypto.Cipher import AES
@@ -246,9 +246,102 @@ vault write transit/keys/test-key/import ciphertext=$ciphertext hash_function=SH
 
 ```
 
+```python
+import requests
+import base64
+from Crypto.Random import get_random_bytes
+from cryptography.hazmat.primitives.serialization import (
+    Encoding, PrivateFormat, NoEncryption, load_pem_public_key
+)
+from cryptography.hazmat.primitives.asymmetric import rsa, padding
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.keywrap import aes_key_wrap_with_padding
+from cryptography.hazmat.backends import default_backend
+
+# Vault config
+VAULT_ADDR = 'http://127.0.0.1:8200'
+VAULT_TOKEN = 'root'
+KEY_NAME = 'imported-rsa-1024'
+
+# Step 1: Generate RSA 1024-bit private key and export to DER (PKCS#8)
+private_key = rsa.generate_private_key(
+    public_exponent=65537,
+    key_size=2048,
+    backend=default_backend()
+)
+
+private_key_der = private_key.private_bytes(
+    encoding=Encoding.DER,
+    format=PrivateFormat.PKCS8,
+    encryption_algorithm=NoEncryption()
+)
+
+# Step 2: Generate an ephemeral AES-256 key and wrap the DER with AES-KWP
+ephemeral_aes_key = get_random_bytes(32)
+wrapped_private_key = aes_key_wrap_with_padding(
+    ephemeral_aes_key,
+    private_key_der,
+    backend=default_backend()
+)
+
+# Step 3: Get Vault's wrapping RSA public key
+resp = requests.get(
+    f"{VAULT_ADDR}/v1/transit/wrapping_key",
+    headers={"X-Vault-Token": VAULT_TOKEN}
+)
+resp.raise_for_status()
+vault_public_key_pem = resp.json()['data']['public_key']
+
+vault_wrapping_key = load_pem_public_key(
+    vault_public_key_pem.encode('utf-8'),
+    backend=default_backend()
+)
+
+# Step 4: Wrap the ephemeral AES key using RSA-OAEP + SHA-256
+wrapped_aes_key = vault_wrapping_key.encrypt(
+    ephemeral_aes_key,
+    padding.OAEP(
+        mgf=padding.MGF1(algorithm=hashes.SHA256()),  # Explicit MGF1 with SHA-256
+        algorithm=hashes.SHA256(),                    # Explicit OAEP with SHA-256
+        label=None
+    )
+)
+
+# Step 5: Combine RSA-wrapped AES key + AES-wrapped target key, base64-encode
+combined_ciphertext = wrapped_aes_key + wrapped_private_key
+b64_ciphertext = base64.b64encode(combined_ciphertext).decode('utf-8')
+
+# Step 6: Create payload and import key into Vault Transit
+import_payload = {
+    "type": "rsa-2048",               # Key type in Vault
+    "ciphertext": b64_ciphertext,     # Wrapped key material
+    "hash_function": "SHA256"       # REQUIRED for RSA-OAEP wrapped keys
+}
+
+headers = {
+    "X-Vault-Token": VAULT_TOKEN,
+    "Content-Type": "application/json"
+}
+
+# Step 7: Import the key
+import_resp = requests.post(
+    f"{VAULT_ADDR}/v1/transit/keys/{KEY_NAME}/import",
+    json=import_payload,
+    headers=headers
+)
+
+# Step 8: Check result
+try:
+    import_resp.raise_for_status()
+    print("✅ RSA private key imported into Vault Transit successfully.")
+except requests.exceptions.HTTPError as err:
+    print(f"❌ Import failed: {import_resp.status_code} - {import_resp.text}")
+
+```
+
 ```sh
 # Encrypt with the new Key
-vault write transit/encrypt/test-key \
+vault write transit/encrypt/imported-rsa-1024 \
     plaintext=$(base64 <<< "4111 1111 1111 1111")\
     -format=json | jq -r '.data | .ciphertext'
 
@@ -258,7 +351,7 @@ vault write transit/encrypt/test-key \
 ```sh
 #Decrypt
 vault write \
-    transit/decrypt/test-key ciphertext="vault:v1:zwWBgpWKMkDXeTqJBe++dZMFnCqY2HjsssxM3od3AVnb2o5H/x3WfYCljwzBeuGy"
+    transit/decrypt/imported-rsa-1024 ciphertext="vault:v1:Fgv5SaCAJPSuhUKsaLdACBXaxKB1YKcIITHKkQqQtTufw+pfGKUfH4HQ8jUiF/YLc5lYPSZLytqjnsVxasqOYr51hGidt9ZXhesJ6MyQXIKqWkfP9aLOfYPd8a1HuTDx/pvYV7bl9rnVsEBn+OeXIFL4FDgtugivUb1YEIqdyLdzuTA0y2pqlwOzxP7vhVa5Rxg9ImcEyljJmHELlR7vJLVO5gmR5UHginoAWo5bEWiaE9NzmuFJjyFGL7oj+K+OBH6Q9R1zc6XNHv3KMvJuaQOsCJPDEH59mko2zg0cxitfsrb6oa7D8DNSb6hM/VZyP9YUfWKqaqwRFtvHXuKxxw=="
 ```
 
 ```sh
