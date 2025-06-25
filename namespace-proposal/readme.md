@@ -2,6 +2,10 @@ Reference:
 
 Policy Templating: https://developer.hashicorp.com/vault/tutorials/policies/policy-templating
 
+Managing secrets across namespace:  https://developer.hashicorp.com/vault/tutorials/enterprise/namespaces-secrets-sharing
+
+Set up vault
+
 ```sh
 #search docker
 docker search hashicorp/vault-enterprise
@@ -13,8 +17,12 @@ docker pull hashicorp/vault-enterprise:latest
 ```
 
 ```sh
+./load_vault_license.sh
+```
+
+```sh
 # Startup Vault
-docker run --cap-add=IPC_LOCK -d --rm --name vault-enterprise -e "VAULT_DEV_ROOT_TOKEN_ID=root" -e "VAULT_DEV_LISTEN_ADDRESS=:8200" -e "VAULT_LICENSE=${VAULT_LICENSE}" -e "VAULT_ADDR=http://0.0.0.0:8200" -p 8200:8200 hashicorp/vault-enterprise:latest
+docker run -d --rm --name vault-enterprise -e "VAULT_DEV_ROOT_TOKEN_ID=root" -e "VAULT_DEV_LISTEN_ADDRESS=:8200" -e "VAULT_LICENSE=${VAULT_LICENSE}" -e "VAULT_ADDR=http://0.0.0.0:8200" -p 8200:8200 hashicorp/vault-enterprise:latest
 ```
 
 ```sh
@@ -26,6 +34,12 @@ vault namespace create admin
 
 # Create /root/admin/tenant1 namespace
 VAULT_NAMESPACE=/admin vault namespace create tenant1
+
+# Create /root/admin/tenant1 namespace
+VAULT_NAMESPACE=/admin vault namespace create tenant2
+
+# Create /root/admin/tenant1 namespace
+VAULT_NAMESPACE=/admin vault namespace create tenant-sharedsecret
 ```
 
 ```sh
@@ -56,11 +70,34 @@ VAULT_NAMESPACE=/admin/tenant1 vault auth enable approle
 vault login root
 #Policy tenant1 readonly
 VAULT_NAMESPACE=/admin/tenant1 vault policy write tenant1-readonly -<<EOF
-# Read-only permission on secrets stored at 'tenant1-sharedsecrets/data/retail-banking'
+# Read-only permission on secrets stored at 'tenant1-secrets/data/retail-banking'
 path "tenant1-secrets/data/retail-banking" {
   capabilities = [ "read" ]
 }
+
 EOF
+```
+
+```sh
+vault login root
+#Policy /admin/tenant-sharedsecret readonly
+VAULT_NAMESPACE=/admin/tenant-sharedsecret vault policy write tenant-sharedsecret-readonly -<<EOF
+path "*" {
+capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
+EOF
+# Read-only permission on secrets stored at 'shared-secrets/data/retail-banking'
+# path "shared-secrets/data/*" {
+#   capabilities = [ "read" ]
+# }
+
+# path "shared-secrets/metadata/*" {
+#   capabilities = [ "read" ]
+# }
+
+# path "sys/internal/ui/*" {
+#   capabilities = [ "read" ]
+# }
 ```
 
 ```sh
@@ -68,8 +105,90 @@ VAULT_NAMESPACE=/admin/tenant1 vault policy list
 ```
 
 ```sh
-# Create a named role
-VAULT_NAMESPACE=/admin/tenant1 vault write auth/approle/role/tenant1-sharedsecrets \
+#Policy /admin readonly
+VAULT_NAMESPACE=/admin vault policy write tenant1-readonly -<<EOF
+# Read-only permission on secrets stored at 'shared-secrets/data/teamname1'
+path "shared-secrets/data/teamname1" {
+  capabilities = [ "read" ]
+}
+
+path "auth/token/lookup-self" {
+  capabilities = ["read"]
+}
+EOF
+```
+
+```sh
+# Enable  secrets in /tenant1 namespace
+VAULT_NAMESPACE=/admin/tenant1 vault secrets enable -path tenant1-secrets -version=2 kv
+# Write secrets for tenant1
+VAULT_NAMESPACE=/admin/tenant1 vault kv put tenant1-secrets/retail-banking project="retail-banking" team="teamname1"
+
+```
+
+```sh
+# Enable  secrets in /enant-sharedsecret namespace
+VAULT_NAMESPACE=/admin/tenant-sharedsecret vault secrets enable -path shared-secrets -version=2 kv
+# Write secrets for tenant1
+VAULT_NAMESPACE=/admin/tenant-sharedsecret vault kv put shared-secrets/retail-banking project="retail-banking" team="teamname1"
+
+```
+
+```sh
+# read all secrets
+VAULT_NAMESPACE=/admin/tenant1 vault kv get -mount=tenant1-secrets retail-banking
+VAULT_NAMESPACE=/admin/tenant1 vault kv get -mount=tenant1-secrets retail-banking
+VAULT_NAMESPACE=/admin vault kv get -mount=shared-secrets teamname1
+```
+
+Create entity and groups
+
+```sh
+# create group in /admin
+#VAULT_NAMESPACE=/admin vault write -format=json identity/group name="teamname1" policies="tenant1-readonly" member_entity_ids='["26744adf-4ee7-43a0-680e-1560533bd32c","88e63956-bd99-d5a4-8edd-205e1448d1e5"]'
+
+VAULT_NAMESPACE=/admin vault write -format=json identity/group \
+  name="teamname1" \
+  policies="tenant1-readonly" \
+  member_entity_ids=[26744adf-4ee7-43a0-680e-1560533bd32c,88e63956-bd99-d5a4-8edd-205e1448d1e5]
+```
+
+```sh
+VAULT_NAMESPACE=/admin/tenant1 vault list identity/entity/id
+```
+
+```sh
+# create group in /admin/tenant-sharedsecret
+VAULT_NAMESPACE=/admin/tenant-sharedsecret vault write -format=json identity/group name="teamname1" policies="tenant-sharedsecret-readonly" member_entity_ids=$(cat entity_id.txt)
+
+
+```
+
+```sh
+VAULT_NAMESPACE=/admin vault read identity/group/name/teamname1
+```
+
+```sh
+# Create entity (approle) in /admin/tenant1 namespace
+#VAULT_NAMESPACE=/admin/tenant1 vault auth list -format=json | jq -r '.["approle/"].accessor' > accessor.txt
+#VAULT_NAMESPACE=/admin/tenant1 vault write -format=json identity/entity name="teamname1" | jq -r ".data.id" > entity_id.txt
+VAULT_NAMESPACE=/admin/tenant1 vault write identity/entity-alias name="approle1" canonical_id=$(cat entity_id.txt) mount_accessor=$(cat accessor.txt)
+
+```
+
+```sh
+VAULT_NAMESPACE=/admin/tenant1 vault read identity/entity/id/$(cat entity_id.txt)
+```
+
+```sh
+VAULT_NAMESPACE=/admin/tenant1 vault read identity/entity-alias/id/81d2618b-f6ae-ed73-6c97-9ee54d626260
+```
+
+Approle create 
+
+```sh
+# Create a named approle
+VAULT_NAMESPACE=/admin/tenant1 vault write auth/approle/role/approle1 \
     token_type=batch \
     secret_id_ttl=10m \
     token_ttl=20m \
@@ -80,102 +199,55 @@ VAULT_NAMESPACE=/admin/tenant1 vault write auth/approle/role/tenant1-sharedsecre
 ```
 
 ```sh
-VAULT_NAMESPACE=/admin/tenant1 vault read auth/approle/role/tenant1-sharedsecrets
+VAULT_NAMESPACE=/admin/tenant1 vault read auth/approle/role/approle1
 ```
 
 ```sh
 # Get role-id
-VAULT_NAMESPACE=/admin/tenant1 vault read auth/approle/role/tenant1-sharedsecrets/role-id
+VAULT_NAMESPACE=/admin/tenant1 vault read auth/approle/role/approle1/role-id > role_id.txt
 # Get secret-id
-VAULT_NAMESPACE=/admin/tenant1 vault write -force auth/approle/role/tenant1-sharedsecrets/secret-id
+VAULT_NAMESPACE=/admin/tenant1  vault write -format=json -force auth/approle/role/approle1/secret-id > secret_id.txt
 ```
 
 ```sh
 # Login
-VAULT_NAMESPACE=/admin/tenant1 vault write auth/approle/login role_id="2ddc845b-cf46-2449-6f23-9c0322112696" \
-    secret_id="baeec36e-ad67-9fa1-9fbb-c8592e5de7dd"
+VAULT_NAMESPACE=/admin/tenant1 vault write -format=json auth/approle/login role_id='0691d495-ff8b-72d0-1bee-ca0446ad54d6' \
+    secret_id=$(cat secret_id.txt | jq -r '.data.secret_id')  > approle_token.txt
 
 ```
 
 ```sh
-VAULT_NAMESPACE=/admin/tenant1 vault login hvb.AAAAAQKLOPePo8Z-A06W2Bd07S68GpzFaGud_SfPbA8r9xPNLDkt4uDn7aOy5AD_WKhLhNXXEWHv1jfubiZRhCftrBcxIWhLaQVIDDTxlq27AtZ_QsNmep8S1lq9nt0K_95HoXoQTsGVHunrslAvuhX8U8gbkkP-ehm7g0NpwXWk8Ht0pSYjw3F39YF_gHp14TBr0TiZnvPyDg6QxPf9-WEFf-W7YKV-4nYEqTf6GFwkeL98NBwDSpBcWlKveYZkEusDxrFdEA3pIliJDBA.f5Vrs
-VAULT_NAMESPACE=/admin/tenant1 vault kv get -mount=tenant1-secrets retail-banking
+# read all secrets
+VAULT_TOKEN=$(cat approle_token.txt | jq -r '.auth.client_token')
+VAULT_TOKEN=$VAULT_TOKEN VAULT_NAMESPACE=/admin/tenant-sharedsecret vault token lookup 
+
+# VAULT_TOKEN=$VAULT_TOKEN VAULT_NAMESPACE=/admin/tenant1 vault kv get -mount=tenant1-secrets retail-banking
+#VAULT_TOKEN=$VAULT_TOKEN VAULT_NAMESPACE=/admin/tenant1 vault kv get -mount=tenant1-secrets retail-banking
+#VAULT_TOKEN=$VAULT_TOKEN VAULT_NAMESPACE=/admin vault kv get -mount=shared-secrets teamname1
+#VAULT_TOKEN=$VAULT_TOKEN VAULT_NAMESPACE=/admin/tenant-sharedsecret  vault kv get -mount=shared-secrets retail-banking
+VAULT_TOKEN=$VAULT_TOKEN VAULT_NAMESPACE=/admin/tenant-sharedsecret  vault kv get -mount=shared-secrets teamname1
+
+
 ```
 
 ```sh
-# Enable  secrets in /tenant1 namespace
-#VAULT_NAMESPACE=/admin/tenant1 vault secrets enable -path tenant1-secrets -version=2 kv
+VAULT_NAMESPACE=/admin/tenant1 vault read identity/entity/id/88e63956-bd99-d5a4-8edd-205e1448d1e5
+```
 
-# Write secrets for tenant1
-VAULT_NAMESPACE=/admin/tenant1 vault kv put tenant1-secrets/retail-banking project="retail-banking" team="teamname1"
+```sh
+
 ```
 
 ```sh
 vault login root
-# Create an entity in the /admin namespace
-VAULT_NAMESPACE=/admin vault auth enable -path="userpass-tenant1" userpass
-```
+VAULT_TOKEN=$VAULT_TOKEN VAULT_NAMESPACE=/admin/tenant-sharedsecret  vault  kv get -mount=shared-secrets retail-banking
 
-```sh
-#Policy tenant1 readonly
-VAULT_NAMESPACE=/admin vault policy write tenant1-readonly -<<EOF
-# Read-only permission on secrets stored at 'shared-secrets/data/teamname1'
-path "shared-secrets/data/teamname1" {
-  capabilities = [ "read" ]
-}
-EOF
-```
-
-```sh
-# configure the userpass-tenant1
-VAULT_NAMESPACE=/admin vault write auth/userpass-tenant1/users/celine password="celinepwd" policies="tenant1-readonly"
-```
-
-```sh
-#List Auth method enabled
-VAULT_NAMESPACE=/admin vault auth list -detailed
-```
-
-```sh
-# for /admin namespace to access shared secret
-# Create entity > Store Accessor
-#VAULT_NAMESPACE=/admin vault auth list -format=json | jq -r '.["userpass-tenant1/"].accessor' > accessor_tenant1.txt
-
-# Create entity called celine-entity
-# VAULT_NAMESPACE=/admin vault write -format=json identity/entity name="celine-entity" policies="tenant1-readonly" \
-#      metadata=project="retail-banking" \
-#      metadata=team="teamname1" \
-#      | jq -r ".data.id" > entity_id_tenant1.txt
-
-# Create entity-alias
-VAULT_NAMESPACE=/admin vault write identity/entity-alias name="celine" \
-     canonical_id=$(cat entity_id_tenant1.txt) \
-     mount_accessor=$(cat accessor_tenant1.txt) \
-     custom_metadata=account="shared-secrets-tenant1"
-```
-
-```sh
-# for /admin/tenant1 namespace to access shared secret
-vault login root
-# Get accessor
-# VAULT_NAMESPACE=/admin/tenant1 vault auth list -format=json | jq -r '.["approle/"].accessor' > accessor_approle.txt
-
-# Create an internal group [NEED TO DELETE]
-VAULT_NAMESPACE=/admin/tenant1 vault write identity/group name="tenant1-teamname1" \
-     policies="tenant1-readonly" \
-     member_entity_ids=$(cat entity_id_tenant1.txt) \
-     metadata=team="teamname1" \
-
-```
-
-```sh
-VAULT_NAMESPACE=/admin vault read -format=json identity/entity/id/$(cat entity_id_tenant1.txt) | jq -r ".data"
 ```
 
 ```sh
 #CLEAN-UP
-#VAULT_NAMESPACE=/admin vault read identity/entity-alias/id/badf77f7-7b14-f370-7487-865e495f784a
 
+#Delete entity-alias created
 VAULT_NAMESPACE=/admin vault delete identity/entity-alias/id/badf77f7-7b14-f370-7487-865e495f784a
 
 
@@ -186,6 +258,8 @@ VAULT_NAMESPACE=/admin vault login -format=json -method=userpass -path=userpass-
     username=celine | jq -r ".auth.client_token" > celine_token.txt
 
 ```
+
+Set GPO to any
 
 ```sh
 vault read sys/config/group-policy-application
