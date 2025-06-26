@@ -414,6 +414,187 @@ Enable Audit Logs
 
 ```sh
 #vault status
-vault login root
-VAULT_NAMESPACE=/admin vault audit enable file file_path="/var/logs/vault/audit.log"
+vault VAULT_NAMESPACE=/admin vault audit enable file file_path="/tmp/audit.log"
+
+
+```
+
+```sh
+VAULT_NAMESPACE=/admin vault kv get -mount=shared-secrets retail
+```
+
+```sh
+# Write secrets for application retail
+VAULT_NAMESPACE=/admin vault kv put shared-secrets/retail project="retail-banking" team="teamname1" newsecret=test
+```
+
+```sh
+VAULT_NAMESPACE=/admin vault kv patch shared-secrets/retail project="retail-banking" newsecret2=test
+```
+
+Sample logs with put request
+
+```json
+{
+  "auth": {
+    "accessor": "hmac-sha256:ccdfed6b632e931fe70c6d06bcd892e72309d3b0ed79f1279ccf5744811f284b",
+    "client_token": "hmac-sha256:1c562389387adfa2cc7267b712b5f724031334e7f9d866196a3f6c5f8a7c4644",
+    "display_name": "token",
+    "policies": [
+      "root"
+    ],
+    "policy_results": {
+      "allowed": true,
+      "granting_policies": [
+        {
+          "type": ""
+        },
+        {
+          "name": "root",
+          "namespace_id": "root",
+          "type": "acl"
+        }
+      ]
+    },
+    "token_policies": [
+      "root"
+    ],
+    "token_issue_time": "2025-06-25T10:13:24Z",
+    "token_type": "service"
+  },
+  "request": {
+    "client_id": "0DHqvq2D77kL2/JTPSZkTMJbkFVmUu0TzMi0jiXcFy8=",
+    "client_token": "hmac-sha256:1c562389387adfa2cc7267b712b5f724031334e7f9d866196a3f6c5f8a7c4644",
+    "client_token_accessor": "hmac-sha256:ccdfed6b632e931fe70c6d06bcd892e72309d3b0ed79f1279ccf5744811f284b",
+    "data": {
+      "data": {
+        "newsecret": "hmac-sha256:fc608f6db6060927b8d7164045a93fc8103405e58e62933564afb4c256a9d6a0",
+        "project": "hmac-sha256:75d7a18629fe1b70b1dfb907484c37b4bf900d9968d61b9026ecfa55314f53dc",
+        "team": "hmac-sha256:b716d7b623ed520532538e1b7c8a5ee4ac2a3a8eb6c46d890de91359ef700e94"
+      },
+      "options": {}
+    },
+    "headers": {
+      "user-agent": [
+        "Go-http-client/1.1"
+      ]
+    },
+    "id": "181a55d1-3302-7a62-191b-c55a7902ace9",
+    "mount_accessor": "kv_5618259b",
+    "mount_class": "secret",
+    "mount_point": "admin/shared-secrets/",
+    "mount_running_version": "v0.21.0+builtin",
+    "mount_type": "kv",
+    "namespace": {
+      "id": "eUSed",
+      "path": "admin/"
+    },
+    "operation": "update",
+    "path": "shared-secrets/data/retail",
+    "remote_address": "192.168.65.1",
+    "remote_port": 63318,
+    "request_uri": "/v1/shared-secrets/data/retail"
+  },
+  "response": {
+    "data": {
+      "created_time": "hmac-sha256:24ad0e3ed6fbb2706039aab0becacb0a3a2c0651bc62fb1fdf57e5a037033c75",
+      "custom_metadata": null,
+      "deletion_time": "hmac-sha256:0cfb1c947ee9be302920660fef7b28bfaa134f002b00c4ca24740427ed448427",
+      "destroyed": false,
+      "version": 2
+    },
+    "mount_accessor": "kv_5618259b",
+    "mount_class": "secret",
+    "mount_point": "admin/shared-secrets/",
+    "mount_running_plugin_version": "v0.21.0+builtin",
+    "mount_type": "kv"
+  },
+  "time": "2025-06-26T04:12:45.323282549Z",
+  "type": "response"
+}
+```
+
+sample code with kv2 patch
+
+```json
+{
+  "auth": {
+    "accessor": "hmac-sha256:ccdfed6b632e931fe70c6d06bcd892e72309d3b0ed79f1279ccf5744811f284b",
+    "client_token": "hmac-sha256:1c562389387adfa2cc7267b712b5f724031334e7f9d866196a3f6c5f8a7c4644",
+    "display_name": "token",
+    "policies": [
+      "root"
+    ],
+    "policy_results": {
+      "allowed": true,
+      "granting_policies": [
+        {
+          "type": ""
+        },
+        {
+          "name": "root",
+          "namespace_id": "root",
+          "type": "acl"
+        }
+      ]
+    },
+    "token_policies": [
+      "root"
+    ],
+    "token_issue_time": "2025-06-25T10:13:24Z",
+    "token_type": "service"
+  },
+  "request": {
+    "client_id": "0DHqvq2D77kL2/JTPSZkTMJbkFVmUu0TzMi0jiXcFy8=",
+    "client_token": "hmac-sha256:1c562389387adfa2cc7267b712b5f724031334e7f9d866196a3f6c5f8a7c4644",
+    "client_token_accessor": "hmac-sha256:ccdfed6b632e931fe70c6d06bcd892e72309d3b0ed79f1279ccf5744811f284b",
+    "data": {
+      "data": {
+        "newsecret2": "hmac-sha256:fc608f6db6060927b8d7164045a93fc8103405e58e62933564afb4c256a9d6a0",
+        "project": "hmac-sha256:75d7a18629fe1b70b1dfb907484c37b4bf900d9968d61b9026ecfa55314f53dc"
+      },
+      "options": {}
+    },
+    "headers": {
+      "user-agent": [
+        "Go-http-client/1.1"
+      ]
+    },
+    "id": "2f75ee2e-34a0-04c5-4507-dd65c7a658c2",
+    "mount_accessor": "kv_5618259b",
+    "mount_class": "secret",
+    "mount_point": "admin/shared-secrets/",
+    "mount_running_version": "v0.21.0+builtin",
+    "mount_type": "kv",
+    "namespace": {
+      "id": "eUSed",
+      "path": "admin/"
+    },
+    "operation": "patch",
+    "path": "shared-secrets/data/retail",
+    "remote_address": "192.168.65.1",
+    "remote_port": 46758,
+    "request_uri": "/v1/shared-secrets/data/retail"
+  },
+  "response": {
+    "data": {
+      "created_time": "hmac-sha256:ed255f2b269d34dba7f60d2f4078cdab79931e9cb806b28394f0ae269518d6f5",
+      "custom_metadata": null,
+      "deletion_time": "hmac-sha256:0cfb1c947ee9be302920660fef7b28bfaa134f002b00c4ca24740427ed448427",
+      "destroyed": false,
+      "version": 5
+    },
+    "mount_accessor": "kv_5618259b",
+    "mount_class": "secret",
+    "mount_point": "admin/shared-secrets/",
+    "mount_running_plugin_version": "v0.21.0+builtin",
+    "mount_type": "kv"
+  },
+  "time": "2025-06-26T04:19:47.22901655Z",
+  "type": "response"
+}
+```
+
+```sh {"terminalRows":"19"}
+docker exec -it vault-enterprise /bin/sh
 ```
