@@ -1,9 +1,9 @@
-# File Encryption 
+# File Encryption
 
 ```sh
 # Using HVD
 
-export VAULT_ADDR=https://vault-cluster-public-vault-a71d51f3.a6c54b84.z1.hashicorp.cloud:8200
+export VAULT_ADDR=${VAULT_ADDR}
 export VAULT_NAMESPACE=admin
 ```
 
@@ -49,4 +49,42 @@ vault write -format=json transit/decrypt/my-key ciphertext=@ciphertext.txt | jq 
 ```sh
 # Decode the plaintext
 base64 --decode -i plaintext.txt > plaintext.pdf
+```
+
+Large File to use Data Key [Optional]
+
+```sh
+# Create the data key
+export DATA_KEY=$(vault write -format=json -f transit/datakey/plaintext/file-key)
+```
+
+```sh
+echo $DATA_KEY
+```
+
+```sh
+# Decode the plaintext datakey and use it to encrypt a local file
+echo $DATA_KEY | jq -r .data.plaintext | base64 --decode > key.bin
+```
+
+```sh
+openssl enc -aes-256-cbc -salt -in sample.pdf -out sample.pdf.enc -pass file:./key.bin
+```
+
+```sh
+# Store the ciphertext data key
+echo $DATA_KEY | jq -r .data.ciphertext > ciphertext_data.key
+```
+
+```sh
+# Decrypt the data key
+vault write transit/decrypt/file-key ciphertext=$(cat ciphertext_data.key)
+
+```
+
+```sh
+# Use the decrypted data key to store the file
+echo "C0qxobhuqM4fl2sLOrtbkIdL1JFkR03Zgpu9I4rL+Oc=" | base64 --decode > key.bin
+openssl enc -d -aes-256-cbc -in sample.pdf.enc -out sample_plaintext.pdf -pass file:./key.bin
+
 ```
