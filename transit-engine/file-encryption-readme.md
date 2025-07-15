@@ -1,5 +1,7 @@
 # File Encryption
 
+![File Encryption Diagram](./img/file-encryption.png)
+
 ```sh
 # Using HVD
 
